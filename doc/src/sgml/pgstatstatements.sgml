@@ -1,0 +1,731 @@
+<!-- doc/src/sgml/pgstatstatements.sgml -->
+
+<sect1 id="pgstatstatements" xreflabel="pg_stat_statements">
+ <title>pg_stat_statements</title>
+
+ <indexterm zone="pgstatstatements">
+  <primary>pg_stat_statements</primary>
+ </indexterm>
+
+ <para>
+<!--
+  The <filename>pg_stat_statements</filename> module provides a means for
+  tracking execution statistics of all SQL statements executed by a server.
+-->
+<filename>pg_stat_statements</filename>モジュールは、サーバで実行されたすべてのSQL文の実行時の統計情報を記録する手段を提供します。
+ </para>
+
+ <para>
+<!--
+  The module must be loaded by adding <literal>pg_stat_statements</> to
+  <xref linkend="guc-shared-preload-libraries"> in
+  <filename>postgresql.conf</>, because it requires additional shared memory.
+  This means that a server restart is needed to add or remove the module.
+-->
+このモジュールは追加の共有メモリを必要とするため、<filename>postgresql.conf</>の<xref linkend="guc-shared-preload-libraries">に<literal>pg_stat_statements</>を追加してモジュールをロードしなければなりません。
+このことは、このモジュールを追加もしくは削除するには、サーバを再起動する必要があるということを意味しています。
+ </para>
+
+ <para>
+<!--
+   When <filename>pg_stat_statements</filename> is loaded, it tracks
+   statistics across all databases of the server.  To access and manipulate
+   these statistics, the module provides a view, <structname>pg_stat_statements</>,
+   and the utility functions <function>pg_stat_statements_reset</> and
+   <function>pg_stat_statements</>.  These are not available globally but
+   can be enabled for a specific database with
+   <command>CREATE EXTENSION pg_stat_statements</>.
+-->
+<filename>pg_stat_statements</filename>はロードされると、サーバのデータベース全体に渡って統計情報を記録します。
+この統計情報にアクセスしたり操作したりするために、このモジュールはビュー<structname>pg_stat_statements</>とユーティリティ関数<function>pg_stat_statements_reset</>、<function>pg_stat_statements</>を提供します。
+これらは大域的に利用可能ではなく、<command>CREATE EXTENSION pg_stat_statements</>で特定のデータベースで可能になります。
+ </para>
+
+ <sect2>
+<!--
+  <title>The <structname>pg_stat_statements</structname> View</title>
+-->
+  <title><structname>pg_stat_statements</structname> ビュー</title>
+
+  <para>
+<!--
+   The statistics gathered by the module are made available via a
+   view named <structname>pg_stat_statements</>.  This view
+   contains one row for each distinct database ID, user ID and query
+   ID (up to the maximum number of distinct statements that the module
+   can track).  The columns of the view are shown in
+   <xref linkend="pgstatstatements-columns">.
+-->
+このモジュールにって収集された統計情報は、<structname>pg_stat_statements</>というビューを通して利用することができます。
+このビューは、1行に対して、それぞれ個々のデータベースID、ユーザID、および問い合わせIDを含んでいます（モジュールが記録できるSQL文の最大数まで）。
+ビューの列は、<xref linkend="pgstatstatements-columns">に示す通りです。
+  </para>
+
+  <table id="pgstatstatements-columns">
+<!--
+   <title><structname>pg_stat_statements</> Columns</title>
+-->
+   <title><structname>pg_stat_statements</>の列</title>
+
+   <tgroup cols="4">
+    <thead>
+     <row>
+<!--
+      <entry>Name</entry>
+      <entry>Type</entry>
+      <entry>References</entry>
+      <entry>Description</entry>
+-->
+      <entry>名前</entry>
+      <entry>型</entry>
+      <entry>参照元</entry>
+      <entry>説明</entry>
+     </row>
+    </thead>
+    <tbody>
+     <row>
+      <entry><structfield>userid</structfield></entry>
+      <entry><type>oid</type></entry>
+      <entry><literal><link linkend="catalog-pg-authid"><structname>pg_authid</structname></link>.oid</literal></entry>
+<!--
+      <entry>OID of user who executed the statement</entry>
+-->
+      <entry>SQL文を実行したユーザのOID</entry>
+     </row>
+
+     <row>
+      <entry><structfield>dbid</structfield></entry>
+      <entry><type>oid</type></entry>
+      <entry><literal><link linkend="catalog-pg-database"><structname>pg_database</structname></link>.oid</literal></entry>
+<!--
+      <entry>OID of database in which the statement was executed</entry>
+-->
+      <entry>SQL文が実行されたデータベースのOID</entry>
+     </row>
+
+     <row>
+      <entry><structfield>queryid</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+<!---
+      <entry>Internal hash code, computed from the statement's parse tree</entry>
+-->
+      <entry>文の解析木から計算された内部ハッシュコード</entry>
+     </row>
+
+     <row>
+      <entry><structfield>query</structfield></entry>
+      <entry><type>text</type></entry>
+      <entry></entry>
+<!--
+      <entry>Text of a representative statement</entry>
+-->
+      <entry>代表的な文の文字列</entry>
+     </row>
+
+     <row>
+      <entry><structfield>calls</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+<!--
+      <entry>Number of times executed</entry>
+-->
+      <entry>実行回数</entry>
+     </row>
+
+     <row>
+      <entry><structfield>total_time</structfield></entry>
+      <entry><type>double precision</type></entry>
+      <entry></entry>
+<!--
+      <entry>Total time spent in the statement, in milliseconds</entry>
+-->
+      <entry>SQL文の処理に費やした総時間（ミリ秒単位）</entry>
+     </row>
+
+     <row>
+      <entry><structfield>min_time</structfield></entry>
+      <entry><type>double precision</type></entry>
+      <entry></entry>
+<!--
+      <entry>Minimum time spent in the statement, in milliseconds</entry>
+-->
+      <entry>SQL文の処理に費やした最小時間（ミリ秒単位）</entry>
+     </row>
+
+     <row>
+      <entry><structfield>max_time</structfield></entry>
+      <entry><type>double precision</type></entry>
+      <entry></entry>
+<!--
+      <entry>Maximum time spent in the statement, in milliseconds</entry>
+-->
+      <entry>SQL文の処理に費やした最大時間（ミリ秒単位）</entry>
+     </row>
+
+     <row>
+      <entry><structfield>mean_time</structfield></entry>
+      <entry><type>double precision</type></entry>
+      <entry></entry>
+<!--
+      <entry>Mean time spent in the statement, in milliseconds</entry>
+-->
+      <entry>SQL文の処理に費やした平均時間（ミリ秒単位）</entry>
+     </row>
+
+     <row>
+      <entry><structfield>stddev_time</structfield></entry>
+      <entry><type>double precision</type></entry>
+      <entry></entry>
+<!--
+      <entry>Population standard deviation of time spent in the statement, in milliseconds</entry>
+-->
+      <entry>SQL文の処理に費やした時間の母標準偏差（ミリ秒単位）</entry>
+     </row>
+
+     <row>
+      <entry><structfield>rows</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+<!--
+      <entry>Total number of rows retrieved or affected by the statement</entry>
+-->
+      <entry>SQL文によって取得された、あるいは影響を受けた行の総数</entry>
+     </row>
+
+     <row>
+      <entry><structfield>shared_blks_hit</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+<!--
+      <entry>Total number of shared block cache hits by the statement</entry>
+-->
+      <entry>SQL文によってヒットした共有ブロックキャッシュの総数</entry>
+     </row>
+
+     <row>
+      <entry><structfield>shared_blks_read</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+<!--
+      <entry>Total number of shared blocks read by the statement</entry>
+-->
+      <entry>SQL文によって読み込まれた共有ブロックの総数</entry>
+     </row>
+
+     <row>
+      <entry><structfield>shared_blks_dirtied</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+<!--
+      <entry>Total number of shared blocks dirtied by the statement</entry>
+-->
+      <entry>文によりダーティ状態となった共有ブロックの総数</entry>
+     </row>
+
+     <row>
+      <entry><structfield>shared_blks_written</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+<!--
+      <entry>Total number of shared blocks written by the statement</entry>
+-->
+      <entry>SQL文によって書き込まれた共有ブロックの総数</entry>
+     </row>
+
+     <row>
+      <entry><structfield>local_blks_hit</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+<!--
+      <entry>Total number of local block cache hits by the statement</entry>
+-->
+      <entry>SQL文によってヒットしたローカルブロックキャッシュの総数</entry>
+     </row>
+
+     <row>
+      <entry><structfield>local_blks_read</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+<!--
+      <entry>Total number of local blocks read by the statement</entry>
+-->
+      <entry>SQL文によって読み込まれたローカルブロックの総数</entry>
+     </row>
+
+     <row>
+      <entry><structfield>local_blks_dirtied</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+<!--
+      <entry>Total number of local blocks dirtied by the statement</entry>
+-->
+      <entry>SQL文によりダーティ状態となったローカルブロックの総数</entry>
+     </row>
+
+     <row>
+      <entry><structfield>local_blks_written</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+<!--
+      <entry>Total number of local blocks written by the statement</entry>
+-->
+      <entry>SQL文によって書き込まれたローカルブロックの総数</entry>
+     </row>
+
+     <row>
+      <entry><structfield>temp_blks_read</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+<!--
+      <entry>Total number of temp blocks read by the statement</entry>
+-->
+      <entry>SQL文によって読み込まれた一時ブロックの総数</entry>
+     </row>
+
+     <row>
+      <entry><structfield>temp_blks_written</structfield></entry>
+      <entry><type>bigint</type></entry>
+      <entry></entry>
+<!--
+      <entry>Total number of temp blocks written by the statement</entry>
+-->
+      <entry>SQL文によって書き込まれた一時ブロックの総数</entry>
+     </row>
+
+     <row>
+      <entry><structfield>blk_read_time</structfield></entry>
+      <entry><type>double precision</type></entry>
+      <entry></entry>
+      <entry>
+<!--
+        Total time the statement spent reading blocks, in milliseconds
+        (if <xref linkend="guc-track-io-timing"> is enabled, otherwise zero)
+-->
+SQL文がブロック読み取りに費やした、ミリ秒単位の総時間
+（<xref linkend="guc-track-io-timing">が有効な場合。無効であればゼロ）
+      </entry>
+     </row>
+
+     <row>
+      <entry><structfield>blk_write_time</structfield></entry>
+      <entry><type>double precision</type></entry>
+      <entry></entry>
+      <entry>
+<!--
+        Total time the statement spent writing blocks, in milliseconds
+        (if <xref linkend="guc-track-io-timing"> is enabled, otherwise zero)
+-->
+SQL文がブロック書き出しに費やした、ミリ秒単位の総時間
+（<xref linkend="guc-track-io-timing">が有効な場合。無効であればゼロ）
+      </entry>
+     </row>
+
+    </tbody>
+   </tgroup>
+  </table>
+
+  <para>
+<!--
+   For security reasons, non-superusers are not allowed to see the SQL
+   text or <structfield>queryid</structfield> of queries executed by other users.
+   They can see the statistics, however, if the view has been installed in their
+   database.
+-->
+セキュリティ上の理由から、スーパーユーザ以外のユーザは、他のユーザによって実行されたSQLテキストや問い合わせの<structfield>queryid</structfield>を見ることができません。
+ただし、ユーザのデータベースにビューがインストールされている場合、統計情報についてはそれらユーザから見ることができます。
+  </para>
+
+  <para>
+<!--
+   Plannable queries (that is, <command>SELECT</>, <command>INSERT</>,
+   <command>UPDATE</>, and <command>DELETE</>) are combined into a single
+   <structname>pg_stat_statements</> entry whenever they have identical query
+   structures according to an internal hash calculation.  Typically, two
+   queries will be considered the same for this purpose if they are
+   semantically equivalent except for the values of literal constants
+   appearing in the query.  Utility commands (that is, all other commands)
+   are compared strictly on the basis of their textual query strings, however.
+-->
+計画作成が可能な問い合わせ（つまり<command>SELECT</>、<command>INSERT</>、<command>UPDATE</>、<command>DELETE</>）は、内部のハッシュ計算に従った、同一の問い合わせ構造を持つ限り、１つの<structname>pg_stat_statements</>項目に組み合わせられます。
+典型的には、２つの問い合わせは、問い合わせの中に現れるリテラル定数の値以外、意味的に等価である場合、この目的では同一とみなされます。
+しかし、ユーティリティコマンド（つまりこの他のコマンドすべて）は問い合わせ文字列のテキストを基に厳密に比較されます。
+  </para>
+
+  <para>
+<!--
+   When a constant's value has been ignored for purposes of matching the
+   query to other queries, the constant is replaced by <literal>?</literal>
+   in the <structname>pg_stat_statements</> display.  The rest of the query
+   text is that of the first query that had the particular
+   <structfield>queryid</> hash value associated with the
+   <structname>pg_stat_statements</> entry.
+-->
+他の問い合わせと合致させるために定数値が無視された場合、<structname>pg_stat_statements</>の表示の中で定数は<literal>?</literal>に置換されます。
+問い合わせの残りのテキストは、<structname>pg_stat_statements</>項目に関連付いた特定の<structfield>queryid</>ハッシュ値を持つ、１つ目の問い合わせのテキストです。
+  </para>
+
+  <para>
+<!--
+   In some cases, queries with visibly different texts might get merged into a
+   single <structname>pg_stat_statements</> entry.  Normally this will happen
+   only for semantically equivalent queries, but there is a small chance of
+   hash collisions causing unrelated queries to be merged into one entry.
+   (This cannot happen for queries belonging to different users or databases,
+   however.)
+-->
+一部の状況では、見た目上異なるテキストを持つ問い合わせが１つの<structname>pg_stat_statements</>項目にまとめられることがあります。
+通常これは意味的に等しい問い合わせでのみ発生しますが、関連がない問い合わせが１つの項目にまとめられるハッシュ競合の可能性がわずかながら存在します。
+（しかしこれは別のユーザまたは別のデータベースに属する問い合わせでは発生することはあり得ません。）
+  </para>
+
+  <para>
+<!--
+   Since the <structfield>queryid</> hash value is computed on the
+   post-parse-analysis representation of the queries, the opposite is
+   also possible: queries with identical texts might appear as
+   separate entries, if they have different meanings as a result of
+   factors such as different <varname>search_path</> settings.
+-->
+<structfield>queryid</>ハッシュ値は問い合わせの解析後の表現に対して計算されますので、<varname>search_path</>の設定が異なる等の要因の結果として異なる意味を持つ場合、同じテキストを持つ問い合わせが別の項目として現れるという、反対もまたあり得ます。
+  </para>
+
+  <para>
+<!--
+   Consumers of <structname>pg_stat_statements</> may wish to use
+   <structfield>queryid</> (perhaps in combination with
+   <structfield>dbid</> and <structfield>userid</>) as a more stable
+   and reliable identifier for each entry than its query text.
+   However, it is important to understand that there are only limited
+   guarantees around the stability of the <structfield>queryid</> hash
+   value.  Since the identifier is derived from the
+   post-parse-analysis tree, its value is a function of, among other
+   things, the internal object identifiers appearing in this representation.
+   This has some counterintuitive implications.  For example,
+   <filename>pg_stat_statements</> will consider two apparently-identical
+   queries to be distinct, if they reference a table that was dropped
+   and recreated between the executions of the two queries.
+   The hashing process is also sensitive to differences in
+   machine architecture and other facets of the platform.
+   Furthermore, it is not safe to assume that <structfield>queryid</>
+   will be stable across major versions of <productname>PostgreSQL</>.
+-->
+<structname>pg_stat_statements</>の消費者は、問い合わせテキストよりもより安定で信頼できる各項目への識別子として(おそらく<structfield>dbid</>や<structfield>userid</>と組み合わせて)<structfield>queryid</>を使いたいかもしれません。
+しかし、<structfield>queryid</>ハッシュ値の安定性には限定された保証しかないのを理解することは重要です。
+識別子は解析後の木から得られますので、その値は、とりわけ、この表現に現れる内部オブジェクト識別子の関数です。
+これは少々直観に反する結果です。
+例えば、<filename>pg_stat_statements</>は見たところは同一の問い合わせを、それらが2つの問い合わせの実行の間に削除され再作成されたテーブルを参照しているのであれば、別個のものとみなします。
+ハッシュ処理はプラットフォームのマシンアーキテクチャやその他の面の違いにも敏感です。
+その上、<productname>PostgreSQL</>のメジャーバージョンをまたがって<structfield>queryid</>が安定であるとみなすのは安全ではありません。
+  </para>
+
+  <para>
+<!--
+   As a rule of thumb, <structfield>queryid</> values can be assumed to be
+   stable and comparable only so long as the underlying server version and
+   catalog metadata details stay exactly the same.  Two servers
+   participating in replication based on physical WAL replay can be expected
+   to have identical <structfield>queryid</> values for the same query.
+   However, logical replication schemes do not promise to keep replicas
+   identical in all relevant details, so <structfield>queryid</> will
+   not be a useful identifier for accumulating costs across a set of logical
+   replicas.  If in doubt, direct testing is recommended.
+-->
+経験上、<structfield>queryid</>値は、基礎となるサーバのバージョンとカタログメタデータの詳細が全く同じである限り、安定していて比較可能とみなすことができます。
+物理WAL再生に基づくレプリケーションに参加する2つのサーバでは、同じ問い合わせに対して同一の<structfield>queryid</>値を持つことが期待できます。
+しかし、論理レプリケーションの仕組みは、レプリカが対応する詳細すべてで同一であることを約束しません。そのため、論理レプリカの集まりで増えるコストを識別するのに<structfield>queryid</>は有用ではありません。
+疑わしければ、直接テストすることを薦めます。
+  </para>
+
+  <para>
+<!--
+   The representative query texts are kept in an external disk file, and do
+   not consume shared memory.  Therefore, even very lengthy query texts can
+   be stored successfully.  However, if many long query texts are
+   accumulated, the external file might grow unmanageably large.  As a
+   recovery method if that happens, <filename>pg_stat_statements</> may
+   choose to discard the query texts, whereupon all existing entries in
+   the <structname>pg_stat_statements</> view will show
+   null <structfield>query</> fields, though the statistics associated with
+   each <structfield>queryid</> are preserved.  If this happens, consider
+   reducing <varname>pg_stat_statements.max</varname> to prevent
+   recurrences.
+-->
+代表的な問い合わせテキストは外部ディスクファイルに保持され、共有メモリを消費しません。
+そのため、非常に長い問い合わせテキストであっても保存に成功します。
+しかし、数多くの長い問い合わせテキストが蓄積されると、外部ファイルは手に負えないくらい大きくなるかもしれません。
+もしそのようなことが起きれば、回復手法として、<filename>pg_stat_statements</>は問い合わせテキストを破棄することを選ぶでしょう。その結果、各<structfield>queryid</>に関連する統計は保存されるものの、<structname>pg_stat_statements</>ビュー内に存在するエントリはすべて<structfield>query</>フィールドがヌルになります。
+もしこのようなことが起きたら、再発防止のため<varname>pg_stat_statements.max</varname>を減らすことを検討してください。
+  </para>
+ </sect2>
+
+ <sect2>
+<!--
+  <title>Functions</title>
+-->
+  <title>関数</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <function>pg_stat_statements_reset() returns void</function>
+     <indexterm>
+      <primary>pg_stat_statements_reset</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+<!--
+      <function>pg_stat_statements_reset</function> discards all statistics
+      gathered so far by <filename>pg_stat_statements</>.
+      By default, this function can only be executed by superusers.
+-->
+<function>pg_stat_statements_reset</function>は<filename>pg_stat_statements</>によってこれまでに収集したすべての統計情報を削除します。
+デフォルトでは、この関数はスーパーユーザのみ実行することができます。
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>pg_stat_statements(showtext boolean) returns setof record</function>
+     <indexterm>
+      <primary>pg_stat_statements</primary>
+<!--
+      <secondary>function</secondary>
+-->
+      <secondary>関数</secondary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+<!--
+      The <structname>pg_stat_statements</structname> view is defined in
+      terms of a function also named <function>pg_stat_statements</>.
+      It is possible for clients to call
+      the <function>pg_stat_statements</function> function directly, and by
+      specifying <literal>showtext := false</literal> have query text be
+      omitted (that is, the <literal>OUT</literal> argument that corresponds
+      to the view's <structfield>query</> column will return nulls).  This
+      feature is intended to support external tools that might wish to avoid
+      the overhead of repeatedly retrieving query texts of indeterminate
+      length.  Such tools can instead cache the first query text observed
+      for each entry themselves, since that is
+      all <filename>pg_stat_statements</> itself does, and then retrieve
+      query texts only as needed.  Since the server stores query texts in a
+      file, this approach may reduce physical I/O for repeated examination
+      of the <structname>pg_stat_statements</structname> data.
+-->
+<structname>pg_stat_statements</structname>ビューは同じく<function>pg_stat_statements</>という名前の関数の項で定義されています。
+クライアントが<function>pg_stat_statements</function>関数を直接呼び出し、<literal>showtext := false</literal>と指定することで問い合わせテキストを省略することが可能です(すなわち、ビューの<structfield>query</>列に対応する<literal>OUT</literal>引数はNULLを返します)。
+この機能は不定長の問い合わせテキストを繰り返し取得するオーバヘッドを避けたいと考える外部のツールをサポートすること意図したものです。
+そのようなツールは代わりに、それが<filename>pg_stat_statements</>自身が行なっていることのすべてですので、各項目で最初に観察された問い合わせテキストをキャッシュし、必要とされる問い合わせテキストのみを取得できます。
+サーバは問い合わせテキストをファイルに格納しますので、この方法は<structname>pg_stat_statements</structname>データの繰り返しの検査に対する物理I/Oを減らすでしょう。
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </sect2>
+
+ <sect2>
+<!--
+  <title>Configuration Parameters</title>
+-->
+  <title>設定パラメータ</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <varname>pg_stat_statements.max</varname> (<type>integer</type>)
+    </term>
+
+    <listitem>
+     <para>
+<!--
+      <varname>pg_stat_statements.max</varname> is the maximum number of
+      statements tracked by the module (i.e., the maximum number of rows
+      in the <structname>pg_stat_statements</> view).  If more distinct
+      statements than that are observed, information about the least-executed
+      statements is discarded.
+      The default value is 5000.
+      This parameter can only be set at server start.
+-->
+<varname>pg_stat_statements.max</varname>は、このモジュールによって記録されるSQL文の最大数(すなわち、<structname>pg_stat_statements</>ビューにおける行の最大数)です。これを超えて異なるSQL文を検出した場合は、最も実行回数の低いSQL文の情報が捨てられます。
+デフォルトは5000です。
+このパラメータはサーバの起動時にのみ指定できます。
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <varname>pg_stat_statements.track</varname> (<type>enum</type>)
+    </term>
+
+    <listitem>
+     <para>
+<!--
+      <varname>pg_stat_statements.track</varname> controls which statements
+      are counted by the module.
+      Specify <literal>top</> to track top-level statements (those issued
+      directly by clients), <literal>all</> to also track nested statements
+      (such as statements invoked within functions), or <literal>none</> to
+      disable statement statistics collection.
+      The default value is <literal>top</>.
+      Only superusers can change this setting.
+-->
+<varname>pg_stat_statements.track</varname>は、どのSQL文をモジュールによって計測するかを制御します。
+<literal>top</>を指定した場合は（直接クライアントによって発行された）最上層のSQL文を記録します。
+<literal>all</>は（関数の中から呼び出された文などの）入れ子になった文も記録します。
+<literal>none</>は文に関する統計情報収集を無効にします。
+デフォルトは<literal>top</>です。
+この設定はスーパーユーザだけが変更できます。
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <varname>pg_stat_statements.track_utility</varname> (<type>boolean</type>)
+    </term>
+
+    <listitem>
+     <para>
+<!--
+      <varname>pg_stat_statements.track_utility</varname> controls whether
+      utility commands are tracked by the module.  Utility commands are
+      all those other than <command>SELECT</>, <command>INSERT</>,
+      <command>UPDATE</> and <command>DELETE</>.
+      The default value is <literal>on</>.
+      Only superusers can change this setting.
+-->
+<varname>pg_stat_statements.track_utility</varname>は、このモジュールがユーティリティコマンドを記録するかどうかを指定します。
+ユーティリティコマンドとは、 <command>SELECT</>、<command>INSERT</>、<command>UPDATE</>および<command>DELETE</>以外のすべてです。
+デフォルトは<literal>on</>です。
+この設定はスーパーユーザのみが変更できます。
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <varname>pg_stat_statements.save</varname> (<type>boolean</type>)
+    </term>
+
+    <listitem>
+     <para>
+<!--
+      <varname>pg_stat_statements.save</varname> specifies whether to
+      save statement statistics across server shutdowns.
+      If it is <literal>off</> then statistics are not saved at
+      shutdown nor reloaded at server start.
+      The default value is <literal>on</>.
+      This parameter can only be set in the <filename>postgresql.conf</>
+      file or on the server command line.
+-->
+<varname>pg_stat_statements.save</varname>は、サーバを終了させる際に文の統計情報を保存するかどうかを指定します。
+<literal>off</>の場合、統計情報は終了時に保存されず、サーバ開始時に再読み込みもされません。
+デフォルト値は<literal>on</>です。
+このパラメータは<filename>postgresql.conf</>ファイル、またはサーバコマンドラインでのみ設定できます。
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+<!--
+   The module requires additional shared memory proportional to
+   <varname>pg_stat_statements.max</varname>.  Note that this
+   memory is consumed whenever the module is loaded, even if
+   <varname>pg_stat_statements.track</> is set to <literal>none</>.
+-->
+このモジュールは、<varname>pg_stat_statements.max</varname>に比例する追加の共有メモリを必要とします。
+<varname>pg_stat_statements.track</>に<literal>none</>が設定されていても、モジュールがロードされている限り常にこのメモリが消費されることに注意してください。
+  </para>
+
+  <para>
+<!--
+   These parameters must be set in <filename>postgresql.conf</>.
+   Typical usage might be:
+-->
+これらのパラメータは<filename>postgresql.conf</>の中で設定しなければなりません。
+典型的な使用方法は以下のようになります。
+
+<programlisting>
+# postgresql.conf
+shared_preload_libraries = 'pg_stat_statements'
+
+pg_stat_statements.max = 10000
+pg_stat_statements.track = all
+</programlisting>
+  </para>
+ </sect2>
+
+ <sect2>
+<!--
+  <title>Sample Output</title>
+-->
+  <title>サンプル出力</title>
+
+<screen>
+bench=# SELECT pg_stat_statements_reset();
+
+$ pgbench -i bench
+$ pgbench -c10 -t300 bench
+
+bench=# \x
+bench=# SELECT query, calls, total_time, rows, 100.0 * shared_blks_hit /
+               nullif(shared_blks_hit + shared_blks_read, 0) AS hit_percent
+          FROM pg_stat_statements ORDER BY total_time DESC LIMIT 5;
+-[ RECORD 1 ]---------------------------------------------------------------------
+query       | UPDATE pgbench_branches SET bbalance = bbalance + ? WHERE bid = ?;
+calls       | 3000
+total_time  | 9609.00100000002
+rows        | 2836
+hit_percent | 99.9778970000200936
+-[ RECORD 2 ]---------------------------------------------------------------------
+query       | UPDATE pgbench_tellers SET tbalance = tbalance + ? WHERE tid = ?;
+calls       | 3000
+total_time  | 8015.156
+rows        | 2990
+hit_percent | 99.9731126579631345
+-[ RECORD 3 ]---------------------------------------------------------------------
+query       | copy pgbench_accounts from stdin
+calls       | 1
+total_time  | 310.624
+rows        | 100000
+hit_percent | 0.30395136778115501520
+-[ RECORD 4 ]---------------------------------------------------------------------
+query       | UPDATE pgbench_accounts SET abalance = abalance + ? WHERE aid = ?;
+calls       | 3000
+total_time  | 271.741999999997
+rows        | 3000
+hit_percent | 93.7968855088209426
+-[ RECORD 5 ]---------------------------------------------------------------------
+query       | alter table pgbench_accounts add primary key (aid)
+calls       | 1
+total_time  | 81.42
+rows        | 0
+hit_percent | 34.4947735191637631
+</screen>
+ </sect2>
+
+ <sect2>
+<!--
+  <title>Authors</title>
+-->
+  <title>作者</title>
+
+  <para>
+<!--
+   Takahiro Itagaki <email>itagaki.takahiro@oss.ntt.co.jp</email>.
+   Query normalization added by Peter Geoghegan <email>peter@2ndquadrant.com</email>.
+-->
+   Takahiro Itagaki <email>itagaki.takahiro@oss.ntt.co.jp</email>。
+   Peter Geoghegan <email>peter@2ndquadrant.com</email>により問い合わせの正規化が追加されました。
+  </para>
+ </sect2>
+
+</sect1>
